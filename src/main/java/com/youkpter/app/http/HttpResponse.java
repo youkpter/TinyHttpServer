@@ -1,5 +1,7 @@
 package com.youkpter.app.http;
 
+import java.io.File;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +16,9 @@ public class HttpResponse {
     private String reason;
     private Map<String, String> headers = new HashMap<>();
     private String body;
+    private File source;
+
+    private OutputStream out;
 
     public String getVersion() {
         return version;
@@ -53,5 +58,21 @@ public class HttpResponse {
 
     public void setBody(String body) {
         this.body = body;
+    }
+
+    public OutputStream getOutputStream() {
+        return out;
+    }
+
+    public void setOutputStream(OutputStream out) {
+        this.out = out;
+    }
+
+    public File getSource() {
+        return source;
+    }
+
+    public void setSource(File source) {
+        this.source = source;
     }
 }

@@ -1,5 +1,8 @@
 package com.youkpter.app.http;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -9,7 +12,11 @@ import java.util.Scanner;
  * Created by youkpter on 17-7-20.
  */
 public class HttpRequest {
-    private String method;
+    private static Logger log = LoggerFactory.getLogger(HttpRequest.class);
+
+    public enum METHOD { GET, HEAD, POST, DELETE}
+
+    private METHOD method;
     private String url;
     private String version;
     private Map<String, String> headers = new HashMap<>();
@@ -32,15 +39,16 @@ public class HttpRequest {
 
     private void parseStartLine() {
         String startLine = in.nextLine();
+        log.info(startLine);
         String[] items = startLine.split(" ");
         assert(items.length == 3);
-        this.method = items[0];
+        this.method = METHOD.valueOf(items[0]);
         this.url = items[1];
         this.version = items[2];
     }
 
     private void parseHeaders() {
-        String header = null;
+        String header;
         String[] items;
 
         while(in.hasNextLine()) {
@@ -80,11 +88,11 @@ public class HttpRequest {
 
     }
 
-    public String getMethod() {
+    public METHOD getMethod() {
         return method;
     }
 
-    public void setMethod(String method) {
+    public void setMethod(METHOD method) {
         this.method = method;
     }
 
