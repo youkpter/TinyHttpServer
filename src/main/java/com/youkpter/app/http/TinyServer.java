@@ -1,6 +1,6 @@
 package com.youkpter.app.http;
 
-import static com.youkpter.app.http.HttpRequest.METHOD;
+import static com.youkpter.app.http.HttpRequest.Method;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -22,13 +22,13 @@ import org.slf4j.LoggerFactory;
 public class TinyServer {
 
     private static Logger log = LoggerFactory.getLogger(TinyServer.class);
-    private static Set<METHOD> supportedMethods;
+    private static Set<Method> supportedMethods;
     private static final String BASE_PATH = TinyServer.class.getClassLoader()
             .getResource("").getPath();
     private int port;
 
     static {
-        supportedMethods = EnumSet.of(METHOD.GET, METHOD.HEAD);
+        supportedMethods = EnumSet.of(Method.GET, Method.HEAD);
     }
 
     public static void main(String[] args) throws IOException {
@@ -86,26 +86,55 @@ public class TinyServer {
         }
 
 
-        String url = request.getUrl();
-        File file = new File(TinyServer.BASE_PATH + url);
+        String uri = request.getUri();
+        File file = new File(TinyServer.BASE_PATH + uri);
         log.info("try to access file: {}", file.toString());
 
         if (file.exists() && file.canRead()) {
             response.setStatus(200);
             response.setReason("OK");
 
-            if (url.endsWith(".html"))
-                response.getHeaders().put("Content-Type", "text/html");
-            else //TODO: detect the file's real content-type
-                response.getHeaders().put("Content-Type", "text/plain");
-            response.getHeaders().put("Content-Length",
-                    String.valueOf(file.length()));
-            if (request.getMethod() == METHOD.GET)
+            if (file.isFile()) {
+                if (uri.endsWith(".html")) {
+                    response.getHeaders().put("Content-Type", "text/html");
+                } else {
+                    //TODO: detect the file's real content-type
+                    response.getHeaders().put("Content-Type", "text/plain");
+                }
                 response.setSource(file);
+                response.getHeaders().put("Content-Length",
+                        String.valueOf(file.length()));
+            } else if (file.isDirectory()) {
+                log.info("request-uri: {} is a directory.", file.getName());
+                response.getHeaders().put("Content-Type", "text/html");
+
+                File welcomeFile = new File(file.getPath() + "/index.html");
+                if (welcomeFile.exists()) {
+                    log.info("welcomeFile({}) exists", welcomeFile.getName());
+                    response.setSource(welcomeFile);
+                } else { // list this directory
+                    log.info("try to list directory({})", file.getName());
+                    // default size may be too small
+                    StringBuilder sb = new StringBuilder(256);
+                    for (File f : file.listFiles()) {
+                        sb.append("<li>").append(f.getName()).append("</li>\n");
+                    }
+                    String body = HttpResponse.listDirectory.replace("{}", sb.toString());
+                    response.setBody(body);
+                    response.getHeaders().put("Content-Length", String.valueOf(body.length()));
+                }
+            } else {
+                log.warn("special file");
+            }
         } else {
             log.info("{} is not existed or cannot read", file.toString());
             response.setStatus(404);
             response.setReason("Not Found");
+        }
+
+        if (request.getMethod() == Method.HEAD) {
+            response.setSource(null);
+            response.setBody(null);
         }
 
         return response;
@@ -117,9 +146,10 @@ public class TinyServer {
                 .append(response.getStatus()).append(" ")
                 .append(response.getReason()).append("\r\n");
 
-        for (Map.Entry<String, String> entry : response.getHeaders().entrySet())
+        for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
             sb.append(entry.getKey()).append(": ")
                     .append(entry.getValue()).append("\r\n");
+        }
 
         sb.append("\r\n");
         log.info(sb.toString());
@@ -137,8 +167,9 @@ public class TinyServer {
                 log.warn(e.getMessage());
                 e.printStackTrace();
             }
-        } else if (response.getBody() != null)
+        } else if (response.getBody() != null) {
             out.print(response.getBody());
+        }
 
         out.flush();
 

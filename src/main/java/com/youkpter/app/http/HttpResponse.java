@@ -16,9 +16,15 @@ public class HttpResponse {
     private String reason;
     private Map<String, String> headers = new HashMap<>();
     private String body;
+    //source也许表示文件名更好些
     private File source;
 
     private OutputStream out;
+
+    static final String listDirectory =
+            "<html>"
+        + "<body><ul>{}</ul></body>"
+        + "</html>";
 
     public String getVersion() {
         return version;

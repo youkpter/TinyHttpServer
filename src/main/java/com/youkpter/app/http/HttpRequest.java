@@ -1,12 +1,13 @@
 package com.youkpter.app.http;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Created by youkpter on 17-7-20.
@@ -14,12 +15,13 @@ import java.util.Scanner;
 public class HttpRequest {
     private static Logger log = LoggerFactory.getLogger(HttpRequest.class);
 
-    public enum METHOD { GET, HEAD, POST, DELETE}
+    public enum Method { GET, HEAD, POST, DELETE }
 
-    private METHOD method;
-    private String url;
+    private Method method;
+    private String uri;
     private String version;
     private Map<String, String> headers = new HashMap<>();
+    private Map<String, String> parameters;
     private String body;
 
     private InputStream inputStream;
@@ -41,9 +43,25 @@ public class HttpRequest {
         String startLine = in.nextLine();
         log.info(startLine);
         String[] items = startLine.split(" ");
-        assert(items.length == 3);
-        this.method = METHOD.valueOf(items[0]);
-        this.url = items[1];
+        assert (items.length == 3);
+        this.method = Method.valueOf(items[0]);
+
+        String uri = items[1];
+        int idx = uri.indexOf('?');
+        if (idx == -1) {
+            this.uri = uri;
+        } else { // parse parameters
+            this.uri = uri.substring(0, idx);
+            String params = uri.substring(idx + 1);
+            String[] pairs = params.split("&");
+            Map<String, String> paramMap = new HashMap<>(pairs.length);
+            for (String pair : pairs) {
+                String[] tokens = pair.split("=");
+                paramMap.put(tokens[0], tokens[1]);
+            }
+            this.parameters = paramMap;
+        }
+
         this.version = items[2];
     }
 
@@ -51,10 +69,13 @@ public class HttpRequest {
         String header;
         String[] items;
 
-        while(in.hasNextLine()) {
+        //TODO each header line ends with CRLF, maybe we need make it clear
+        while (in.hasNextLine()) {
             header = in.nextLine();
-            if(header.length() == 0) // a empty line is the boundary of headers and body
+            if (header.length() == 0) { // a empty line is the boundary of headers
+                // and optional body
                 break;
+            }
 
             items = header.split(":", 2);
             headers.put(items[0].toLowerCase(), items[1].trim());
@@ -74,34 +95,60 @@ public class HttpRequest {
      */
     private void parseEntityBody() {
         String lengthStr = headers.get("content-length");
-        if(lengthStr == null)
+        if (lengthStr == null) {
             return;
+        }
         int len = Integer.parseInt(lengthStr);
 
         byte[] bytes = new byte[len];
-        for(int i = 0; i < len; i++) {
+        for (int i = 0; i < len; i++) {
             bytes[i] = in.nextByte();
         }
 
         // at now, let's consider it as plain text
-        body = new String(bytes);
+        if (getCharset() != null) {
+            try {
+                body = new String(bytes, getCharset());
+            } catch (UnsupportedEncodingException e) {
+                body = new String(bytes);
+                e.printStackTrace();
+            }
+        } else {
+            body = new String(bytes);
+        }
+    }
+
+    private String getCharset() {
+        String contentType = headers.get("content-type");
+        String[] items = contentType.split(";");
+        if (items.length == 1) {
+            return null;
+        }
+
+        for (int i = 1; i < items.length; i++) {
+            String[] paramter = items[i].split("=");
+            if (paramter[0].equalsIgnoreCase("charset")) {
+                return paramter[1];
+            }
+        }
+        return null;
 
     }
 
-    public METHOD getMethod() {
+    public Method getMethod() {
         return method;
     }
 
-    public void setMethod(METHOD method) {
+    public void setMethod(Method method) {
         this.method = method;
     }
 
-    public String getUrl() {
-        return url;
+    public String getUri() {
+        return uri;
     }
 
-    public void setUrl(String url) {
-        this.url = url;
+    public void setUri(String uri) {
+        this.uri = uri;
     }
 
     public String getVersion() {
