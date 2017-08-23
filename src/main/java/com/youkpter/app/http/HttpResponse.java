@@ -1,37 +1,90 @@
 package com.youkpter.app.http;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.OutputStream;
-import java.util.ArrayList;
+import java.io.PrintWriter;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Created by youkpter on 17-7-20.
  */
 public class HttpResponse {
-    private String version;
+    private static Logger log = LoggerFactory.getLogger(HttpResponse.class);
+
+    private final String version = "HTTP/1.1";
     private int status;
     private String reason;
     private Map<String, String> headers = new HashMap<>();
+
+    /*
+     * the response body
+     */
     private String body;
-    //source也许表示文件名更好些
+
+    /*
+     *  the response body is the file content
+     */
     private File source;
 
-    private OutputStream out;
+    private OutputStream outputStream;
 
     static final String listDirectory =
             "<html>"
         + "<body><ul>{}</ul></body>"
         + "</html>";
 
-    public String getVersion() {
-        return version;
+    public HttpResponse(HttpStatus status) {
+        this.status = status.code();
+        this.reason = status.reason();
     }
 
-    public void setVersion(String version) {
-        this.version = version;
+    public void output() {
+        StringBuilder sb = new StringBuilder();
+
+        // response status line
+        sb.append(version).append(" ")
+            .append(status).append(" ")
+            .append(reason).append("\r\n");
+
+        // headers
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            sb.append(entry.getKey()).append(": ")
+                .append(entry.getValue()).append("\r\n");
+        }
+
+        sb.append("\r\n");
+        log.info(sb.toString());
+        PrintWriter out = new PrintWriter(outputStream);
+        out.print(sb.toString());
+
+        if (source != null) {
+            try {
+                Scanner in = new Scanner(source);
+                while (in.hasNextLine()) {
+                    out.println(in.nextLine());
+                }
+            } catch (FileNotFoundException e) {
+                log.warn(e.getMessage());
+                e.printStackTrace();
+            }
+        } else if (body != null) {
+            out.print(body);
+        }
+
+        out.flush();
+
+        log.info("printResponse over");
+
+    }
+
+    public String getVersion() {
+        return version;
     }
 
     public int getStatus() {
@@ -50,12 +103,16 @@ public class HttpResponse {
         this.reason = reason;
     }
 
-    public Map<String, String> getHeaders() {
-        return headers;
+    public String getHeader(String name) {
+        return this.headers.get(name);
     }
 
-    public void setHeaders(Map<String, String> headers) {
-        this.headers = headers;
+    public Map<String, String> getHeaders() {
+        return this.headers;
+    }
+
+    public void addHeader(String name, String value) {
+        this.headers.put(name, value);
     }
 
     public String getBody() {
@@ -67,11 +124,11 @@ public class HttpResponse {
     }
 
     public OutputStream getOutputStream() {
-        return out;
+        return outputStream;
     }
 
     public void setOutputStream(OutputStream out) {
-        this.out = out;
+        this.outputStream = out;
     }
 
     public File getSource() {

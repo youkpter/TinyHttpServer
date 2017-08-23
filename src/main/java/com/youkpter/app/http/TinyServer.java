@@ -3,14 +3,10 @@ package com.youkpter.app.http;
 import static com.youkpter.app.http.HttpRequest.Method;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.EnumSet;
-import java.util.Map;
-import java.util.Scanner;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -22,6 +18,7 @@ import org.slf4j.LoggerFactory;
 public class TinyServer {
 
     private static Logger log = LoggerFactory.getLogger(TinyServer.class);
+
     private static Set<Method> supportedMethods;
     private static final String BASE_PATH = TinyServer.class.getClassLoader()
             .getResource("").getPath();
@@ -69,67 +66,48 @@ public class TinyServer {
         HttpResponse response = generateResponse(request);
         response.setOutputStream(socket.getOutputStream());
 
-        printResponse(response);
+        response.output();
         socket.close();
     }
 
     private static HttpResponse generateResponse(HttpRequest request) {
-        HttpResponse response = new HttpResponse();
+        HttpResponse response;
         log.info("starting generateResponse");
 
-        response.setVersion(request.getVersion());
-
         if (!supportedMethods.contains(request.getMethod())) {
-            response.setStatus(501);
-            response.setReason("Not Implemented");
-            return response;
+            return new HttpResponse(HttpStatus.NOT_IMPLEMENTED);
         }
-
 
         String uri = request.getUri();
         File file = new File(TinyServer.BASE_PATH + uri);
         log.info("try to access file: {}", file.toString());
 
-        if (file.exists() && file.canRead()) {
-            response.setStatus(200);
-            response.setReason("OK");
+        if (!file.exists() || !file.canRead()) {
+            log.info("{} is not existed or cannot read", file.toString());
+            return new HttpResponse(HttpStatus.NOT_FOUND);
+        } else {
+            response = new HttpResponse(HttpStatus.OK);
+
+            setContentType(file, response);
 
             if (file.isFile()) {
-                if (uri.endsWith(".html")) {
-                    response.getHeaders().put("Content-Type", "text/html");
-                } else {
-                    //TODO: detect the file's real content-type
-                    response.getHeaders().put("Content-Type", "text/plain");
-                }
-                response.setSource(file);
-                response.getHeaders().put("Content-Length",
-                        String.valueOf(file.length()));
+                dealWithFile(request, response, file);
             } else if (file.isDirectory()) {
                 log.info("request-uri: {} is a directory.", file.getName());
-                response.getHeaders().put("Content-Type", "text/html");
 
-                File welcomeFile = new File(file.getPath() + "/index.html");
+                File welcomeFile = new File(file + "/index.html");
+
                 if (welcomeFile.exists()) {
                     log.info("welcomeFile({}) exists", welcomeFile.getName());
-                    response.setSource(welcomeFile);
+                    dealWithFile(request, response, welcomeFile);
                 } else { // list this directory
                     log.info("try to list directory({})", file.getName());
-                    // default size may be too small
-                    StringBuilder sb = new StringBuilder(256);
-                    for (File f : file.listFiles()) {
-                        sb.append("<li>").append(f.getName()).append("</li>\n");
-                    }
-                    String body = HttpResponse.listDirectory.replace("{}", sb.toString());
-                    response.setBody(body);
-                    response.getHeaders().put("Content-Length", String.valueOf(body.length()));
+                    dealWithListDirectory(request, response, file);
                 }
             } else {
                 log.warn("special file");
+                response = new HttpResponse(HttpStatus.NOT_FOUND);
             }
-        } else {
-            log.info("{} is not existed or cannot read", file.toString());
-            response.setStatus(404);
-            response.setReason("Not Found");
         }
 
         if (request.getMethod() == Method.HEAD) {
@@ -140,40 +118,38 @@ public class TinyServer {
         return response;
     }
 
-    private static void printResponse(HttpResponse response) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(response.getVersion()).append(" ")
-                .append(response.getStatus()).append(" ")
-                .append(response.getReason()).append("\r\n");
 
-        for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
-            sb.append(entry.getKey()).append(": ")
-                    .append(entry.getValue()).append("\r\n");
+    private static void setContentType(File file, HttpResponse response) {
+        // if request a file which suffix is not html
+        if (file.isFile() && !file.getName().endsWith(".html")) {
+            //TODO: detect the file's real content-type
+            response.addHeader("Content-Type", "text/plain");
+        } else {
+            response.addHeader("Content-Type", "text/html");
         }
+    }
 
-        sb.append("\r\n");
-        log.info(sb.toString());
-        PrintWriter out = new PrintWriter(response.getOutputStream());
-        out.print(sb.toString());
+    private static void dealWithFile(HttpRequest req, HttpResponse response, File file) {
+        response.addHeader("Content-Length", String.valueOf(file.length()));
 
-        if (response.getSource() != null) {
-            File file = response.getSource();
-            try {
-                Scanner in = new Scanner(file);
-                while (in.hasNextLine()) {
-                    out.println(in.nextLine());
-                }
-            } catch (FileNotFoundException e) {
-                log.warn(e.getMessage());
-                e.printStackTrace();
-            }
-        } else if (response.getBody() != null) {
-            out.print(response.getBody());
+        if (req.getMethod() == Method.HEAD) {
+            return;
         }
+        response.setSource(file);
+    }
 
-        out.flush();
+    private static void dealWithListDirectory(HttpRequest req, HttpResponse response, File file) {
+        // default size may be too small
+        StringBuilder sb = new StringBuilder(256);
+        for (File f : file.listFiles()) {
+            sb.append("<li>").append(f.getName()).append("</li>\n");
+        }
+        String body = HttpResponse.listDirectory.replace("{}", sb.toString());
+        response.addHeader("Content-Length", String.valueOf(body.length()));
 
-        log.info("printResponse over");
-
+        // set body, if and only if request method is GET.(HEAD method doesn't need body)
+        if (req.getMethod() == Method.GET) {
+            response.setBody(body);
+        }
     }
 }
