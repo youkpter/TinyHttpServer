@@ -18,21 +18,12 @@ public class HttpResponse {
     private static Logger log = LoggerFactory.getLogger(HttpResponse.class);
 
     private final String version = "HTTP/1.1";
-    private int status;
+    private int statusCode;
     private String reason;
     private Map<String, String> headers = new HashMap<>();
 
-    /*
-     * the response body
-     */
-    private String body;
-
-    /*
-     *  the response body is the file content
-     */
-    private File source;
-
     private OutputStream outputStream;
+    private PrintWriter writer;
 
     static final String listDirectory =
             "<html>"
@@ -40,16 +31,24 @@ public class HttpResponse {
         + "</html>";
 
     public HttpResponse(HttpStatus status) {
-        this.status = status.code();
+        this.statusCode = status.code();
         this.reason = status.reason();
     }
 
-    public void output() {
+    public HttpResponse(OutputStream outputStream) {
+        this.outputStream = outputStream;
+        this.writer = new PrintWriter(outputStream);
+    }
+
+    /**
+     *  send status line, headers and the empty line.
+     */
+    public void sendMetaData() {
         StringBuilder sb = new StringBuilder();
 
         // response status line
         sb.append(version).append(" ")
-            .append(status).append(" ")
+            .append(statusCode).append(" ")
             .append(reason).append("\r\n");
 
         // headers
@@ -59,48 +58,26 @@ public class HttpResponse {
         }
 
         sb.append("\r\n");
-        log.info(sb.toString());
-        PrintWriter out = new PrintWriter(outputStream);
-        out.print(sb.toString());
-
-        if (source != null) {
-            try {
-                Scanner in = new Scanner(source);
-                while (in.hasNextLine()) {
-                    out.println(in.nextLine());
-                }
-            } catch (FileNotFoundException e) {
-                log.warn(e.getMessage());
-                e.printStackTrace();
-            }
-        } else if (body != null) {
-            out.print(body);
-        }
-
-        out.flush();
-
-        log.info("printResponse over");
-
+        writer.print(sb.toString());
+        writer.flush();
     }
+
 
     public String getVersion() {
         return version;
     }
 
-    public int getStatus() {
-        return status;
+    public int getStatusCode() {
+        return statusCode;
     }
 
-    public void setStatus(int status) {
-        this.status = status;
+    public void setStatus(HttpStatus status) {
+        this.statusCode = status.code();
+        this.reason = status.reason();
     }
 
     public String getReason() {
         return reason;
-    }
-
-    public void setReason(String reason) {
-        this.reason = reason;
     }
 
     public String getHeader(String name) {
@@ -115,27 +92,42 @@ public class HttpResponse {
         this.headers.put(name, value);
     }
 
-    public String getBody() {
-        return body;
-    }
-
-    public void setBody(String body) {
-        this.body = body;
-    }
-
     public OutputStream getOutputStream() {
         return outputStream;
     }
 
-    public void setOutputStream(OutputStream out) {
-        this.outputStream = out;
+    public PrintWriter getWriter() {
+        return writer;
     }
 
-    public File getSource() {
-        return source;
+    public void send(String body) {
+        sendMetaData();
+        // send http body
+        if (body != null) {
+            writer.print(body);
+            writer.flush();
+        }
     }
 
-    public void setSource(File source) {
-        this.source = source;
+    public void send(HttpStatus status) {
+        setStatus(status);
+        sendMetaData();
+    }
+
+    public void send(File file) {
+        sendMetaData();
+
+        if (file != null) {
+            try {
+                Scanner in = new Scanner(file);
+                while (in.hasNextLine()) {
+                    writer.println(in.nextLine());
+                }
+            } catch (FileNotFoundException e) {
+                log.warn(e.getMessage());
+                e.printStackTrace();
+            }
+            writer.flush();
+        }
     }
 }

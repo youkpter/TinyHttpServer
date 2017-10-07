@@ -6,8 +6,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.EnumSet;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,14 +17,9 @@ public class TinyServer {
 
     private static Logger log = LoggerFactory.getLogger(TinyServer.class);
 
-    private static Set<Method> supportedMethods;
     private static final String BASE_PATH = TinyServer.class.getClassLoader()
-            .getResource("").getPath();
+        .getResource("").getPath();
     private int port;
-
-    static {
-        supportedMethods = EnumSet.of(Method.GET, Method.HEAD);
-    }
 
     public static void main(String[] args) throws IOException {
         TinyServer server;
@@ -51,10 +44,12 @@ public class TinyServer {
             try {
                 Socket incoming = s.accept();
                 handleRequest(incoming);
+                incoming.close();
             } catch (IOException e) {
                 log.error(e.getMessage());
                 e.printStackTrace();
             }
+            log.info("finish request");
         }
     }
 
@@ -63,61 +58,65 @@ public class TinyServer {
         HttpRequest request = new HttpRequest(socket.getInputStream());
         request.parseRequest();
 
-        HttpResponse response = generateResponse(request);
-        response.setOutputStream(socket.getOutputStream());
-
-        response.output();
-        socket.close();
+        HttpResponse response = new HttpResponse(socket.getOutputStream());
+        doInternalRequest(request, response);
     }
 
-    private static HttpResponse generateResponse(HttpRequest request) {
-        HttpResponse response;
-        log.info("starting generateResponse");
-
-        if (!supportedMethods.contains(request.getMethod())) {
-            return new HttpResponse(HttpStatus.NOT_IMPLEMENTED);
+    private static void doInternalRequest(HttpRequest request, HttpResponse response) {
+        switch (request.getMethod()) {
+            case GET:
+                doGet(request, response);
+                break;
+            case HEAD:
+                doHead(request, response);
+                break;
+            default:
+                doNotImplemented(request, response);
+                break;
         }
+    }
 
+    private static void doNotImplemented(HttpRequest request, HttpResponse response) {
+        response.send(HttpStatus.NOT_IMPLEMENTED);
+    }
+
+
+    private static void doHead(HttpRequest request, HttpResponse response) {
+        // the methods invoked by doGet have already taking head method into account
+        doGet(request, response);
+    }
+
+    private static void doGet(HttpRequest request, HttpResponse response) {
         String uri = request.getUri();
         File file = new File(TinyServer.BASE_PATH + uri);
-        log.info("try to access file: {}", file.toString());
 
         if (!file.exists() || !file.canRead()) {
             log.info("{} is not existed or cannot read", file.toString());
-            return new HttpResponse(HttpStatus.NOT_FOUND);
+            response.send(HttpStatus.NOT_FOUND);
         } else {
-            response = new HttpResponse(HttpStatus.OK);
-
+            response.setStatus(HttpStatus.OK);
             setContentType(file, response);
-
             if (file.isFile()) {
                 dealWithFile(request, response, file);
             } else if (file.isDirectory()) {
-                log.info("request-uri: {} is a directory.", file.getName());
-
-                File welcomeFile = new File(file + "/index.html");
-
-                if (welcomeFile.exists()) {
-                    log.info("welcomeFile({}) exists", welcomeFile.getName());
-                    dealWithFile(request, response, welcomeFile);
-                } else { // list this directory
-                    log.info("try to list directory({})", file.getName());
-                    dealWithListDirectory(request, response, file);
-                }
+                dealWithWelcomeFile(request, response, file);
             } else {
                 log.warn("special file");
-                response = new HttpResponse(HttpStatus.NOT_FOUND);
+                response.send(HttpStatus.NOT_FOUND);
             }
-        }
 
-        if (request.getMethod() == Method.HEAD) {
-            response.setSource(null);
-            response.setBody(null);
         }
-
-        return response;
     }
 
+    private static void dealWithWelcomeFile(HttpRequest request, HttpResponse response, File file) {
+        File welcomeFile = new File(file + "/index.html");
+
+        if (welcomeFile.exists()) {
+            dealWithFile(request, response, welcomeFile);
+        } else { // list this directory
+            listDirectory(request, response, file);
+        }
+    }
 
     private static void setContentType(File file, HttpResponse response) {
         // if request a file which suffix is not html
@@ -129,16 +128,20 @@ public class TinyServer {
         }
     }
 
+
     private static void dealWithFile(HttpRequest req, HttpResponse response, File file) {
         response.addHeader("Content-Length", String.valueOf(file.length()));
 
         if (req.getMethod() == Method.HEAD) {
+            response.send((String) null);
             return;
         }
-        response.setSource(file);
+
+        response.send(file);
+
     }
 
-    private static void dealWithListDirectory(HttpRequest req, HttpResponse response, File file) {
+    private static void listDirectory(HttpRequest req, HttpResponse response, File file) {
         // default size may be too small
         StringBuilder sb = new StringBuilder(256);
         for (File f : file.listFiles()) {
@@ -147,9 +150,11 @@ public class TinyServer {
         String body = HttpResponse.listDirectory.replace("{}", sb.toString());
         response.addHeader("Content-Length", String.valueOf(body.length()));
 
-        // set body, if and only if request method is GET.(HEAD method doesn't need body)
-        if (req.getMethod() == Method.GET) {
-            response.setBody(body);
+        // if this is HEAD method, we don't need the http body
+        if (req.getMethod() == Method.HEAD) {
+            body = null;
         }
+
+        response.send(body);
     }
 }
