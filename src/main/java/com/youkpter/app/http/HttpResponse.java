@@ -3,7 +3,9 @@ package com.youkpter.app.http;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
@@ -37,7 +39,12 @@ public class HttpResponse {
 
     public HttpResponse(OutputStream outputStream) {
         this.outputStream = outputStream;
-        this.writer = new PrintWriter(outputStream);
+        try {
+            this.writer = new PrintWriter(new OutputStreamWriter(outputStream, "UTF-8"));
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+            this.writer = new PrintWriter(outputStream);
+        }
     }
 
     /**

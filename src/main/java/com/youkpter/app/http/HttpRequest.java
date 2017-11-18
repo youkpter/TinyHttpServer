@@ -54,7 +54,7 @@ public class HttpRequest {
             this.uri = uri.substring(0, idx);
             String params = uri.substring(idx + 1);
             String[] pairs = params.split("&");
-            Map<String, String> paramMap = new HashMap<>(pairs.length);
+            Map<String, String> paramMap = new HashMap<>(pairs.length * 4 / 3 + 1);
             for (String pair : pairs) {
                 String[] tokens = pair.split("=");
                 paramMap.put(tokens[0], tokens[1]);
@@ -106,9 +106,10 @@ public class HttpRequest {
         }
 
         // at now, let's consider it as plain text
-        if (getCharset() != null) {
+        String charset = getCharset();
+        if (charset != null) {
             try {
-                body = new String(bytes, getCharset());
+                body = new String(bytes, charset);
             } catch (UnsupportedEncodingException e) {
                 body = new String(bytes);
                 e.printStackTrace();

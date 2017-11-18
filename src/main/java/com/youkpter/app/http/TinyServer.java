@@ -4,6 +4,7 @@ import static com.youkpter.app.http.HttpRequest.Method;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -122,9 +123,9 @@ public class TinyServer {
         // if request a file which suffix is not html
         if (file.isFile() && !file.getName().endsWith(".html")) {
             //TODO: detect the file's real content-type
-            response.addHeader("Content-Type", "text/plain");
+            response.addHeader("Content-Type", "text/plain; charset=utf-8");
         } else {
-            response.addHeader("Content-Type", "text/html");
+            response.addHeader("Content-Type", "text/html; charset=utf-8");
         }
     }
 
@@ -148,7 +149,14 @@ public class TinyServer {
             sb.append("<li>").append(f.getName()).append("</li>\n");
         }
         String body = HttpResponse.listDirectory.replace("{}", sb.toString());
-        response.addHeader("Content-Length", String.valueOf(body.length()));
+        int contentLength = 0;
+        try {
+            // response's charset is utf-8
+            contentLength = body.getBytes("UTF-8").length;
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+        response.addHeader("Content-Length", String.valueOf(contentLength));
 
         // if this is HEAD method, we don't need the http body
         if (req.getMethod() == Method.HEAD) {
